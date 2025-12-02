@@ -52,7 +52,7 @@ jobs:
       - name: Build Docker image
         uses: docker/build-push-action@v4
         with:
-          context: ./docker
+          context: .
           file: ./docker/Dockerfile.api
           push: true
           tags: |
@@ -60,6 +60,9 @@ jobs:
             ${{ secrets.DOCKER_USERNAME }}/insurance-model-api:latest
           build-args: |
             MODEL_VERSION=${{ steps.get-model.outputs.MODEL_VERSION }}
+            MLFLOW_TRACKING_URI=${{ secrets.MLFLOW_TRACKING_URI }}
+            MODEL_NAME=insurance_model
+            MODEL_STAGE=Production
       
       - name: Deploy to staging
         run: |
