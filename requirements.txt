@@ -1,17 +1,36 @@
+# Core ML packages
 dvc
 dvc-gdrive
 fastapi
 imbalanced-learn
 joblib
 mlflow
-pyarrow
-mkdocs
-mkdocs-material
-numpy 
+numpy
 pandas
-pytest
 PyYAML
 scikit-learn
 setuptools
 uvicorn
-# evidently @ git+https://github.com/evidentlyai/evidently.git
+pyarrow
+
+# API and serving
+pydantic
+python-multipart
+
+# Monitoring
+prometheus-client
+
+# Data storage
+boto3
+
+# Airflow (for orchestration)
+apache-airflow
+apache-airflow-providers-amazon
+
+# Data profiling (ydata-profiling is the maintained successor to pandas-profiling)
+# Note: If ydata-profiling doesn't work with Python 3.14, the profiling module has a fallback
+ydata-profiling>=4.0.0; python_version<"3.14"
+
+# Documentation
+mkdocs
+mkdocs-material

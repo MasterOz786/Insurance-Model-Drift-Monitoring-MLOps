@@ -36,7 +36,23 @@ Thumbs.db
 # Models and data (if large, use DVC)
 models/*.pkl
 *.pkl
-data/*.csv
+data/raw/*
+data/processed/*
+!data/processed/.gitkeep
+data/reports/*.html
+
+# Airflow
+airflow/logs/
+airflow/airflow.db
+airflow/airflow-webserver.pid
+
+# DVC
+.dvc/cache/
+.dvc/tmp/
+
+# Environment variables
+.env
+.env.local
 
 # Jupyter
 .ipynb_checkpoints/
@@ -44,3 +60,13 @@ data/*.csv
 
 # HTML reports
 *.html
+
+# Coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
