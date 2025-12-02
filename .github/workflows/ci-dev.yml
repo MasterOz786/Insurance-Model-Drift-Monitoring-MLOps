@@ -16,15 +16,9 @@ jobs:
         with:
           python-version: '3.10'
           cache: 'pip'
-      
-      - name: Cache pip dependencies
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ github.ref }}-${{ hashFiles('requirements.txt', 'requirements-dev.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-${{ github.ref }}-
-            ${{ runner.os }}-pip-
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
       
       - name: Install dependencies
         run: |
