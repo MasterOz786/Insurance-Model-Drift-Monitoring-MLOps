@@ -35,7 +35,7 @@ jobs:
         uses: iterative/setup-dvc@v1
       
       - name: Configure DVC remote (MinIO)
-        if: ${{ secrets.S3_ENDPOINT_URL != '' }}
+        if: ${{ secrets.S3_ENDPOINT_URL }}
         run: |
           dvc remote add myremote s3://mlops/dvc || true
           dvc remote modify myremote endpointurl ${{ secrets.S3_ENDPOINT_URL }}
@@ -50,7 +50,7 @@ jobs:
           vega: false
       
       - name: Pull data from DVC
-        if: ${{ secrets.S3_ENDPOINT_URL != '' }}
+        if: ${{ secrets.S3_ENDPOINT_URL }}
         continue-on-error: true
         run: |
           dvc pull || echo "⚠️ DVC pull failed - will generate data if needed"
