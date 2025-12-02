@@ -279,7 +279,12 @@ def train_model(**context):
             mlflow.log_dict(class_report, "classification_report.json")
 
             # Log model (workaround for Dagshub - use artifact logging)
-            input_example = X_train.head(1)
+            # Use a sample that represents the actual data types (convert int to float to avoid schema warnings)
+            input_example = X_train.head(1).copy()
+            # Convert integer columns to float to avoid missing value warnings
+            for col in input_example.select_dtypes(include=["int64", "int32"]).columns:
+                input_example[col] = input_example[col].astype("float64")
+
             try:
                 # Try standard log_model first
                 mlflow.sklearn.log_model(
@@ -302,7 +307,7 @@ def train_model(**context):
                     mlflow.sklearn.save_model(
                         trainer.pipeline, model_path, input_example=input_example
                     )
-                    mlflow.log_artifacts(model_path, "model")
+                    mlflow.log_artifacts(model_path, artifact_path="model")
                 logger.info("Model logged as artifact successfully")
 
             # Save model locally as well
