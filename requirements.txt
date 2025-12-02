@@ -1,0 +1,17 @@
+dvc
+dvc-gdrive
+fastapi
+imbalanced-learn
+joblib
+mlflow
+pyarrow
+mkdocs
+mkdocs-material
+numpy 
+pandas
+pytest
+PyYAML
+scikit-learn
+setuptools
+uvicorn
+# evidently @ git+https://github.com/evidentlyai/evidently.git
