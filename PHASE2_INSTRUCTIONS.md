@@ -302,7 +302,7 @@ After completing Phase II:
 python src/training/train.py
 
 # View MLflow UI locally (if needed)
-mlflow ui --port 5000
+mlflow ui --port 5001
 
 # Add data to DVC
 dvc add data/processed/latest.csv
