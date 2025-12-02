@@ -2,3 +2,5 @@
     remote = myremote
 ['remote "myremote"']
     url = E:\datasets\insurance-dataset
+['remote "origin"']
+    url = https://dagshub.com/MasterOz786/Insurance-Model-Drift-Monitoring-MLOps
