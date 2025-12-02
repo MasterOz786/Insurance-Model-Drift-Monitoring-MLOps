@@ -48,7 +48,7 @@ async def startup_event():
     """Load model from MLflow on startup"""
     global model, model_version
     try:
-        mlflow_tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
+        mlflow_tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5001")
         model_name = os.getenv("MODEL_NAME", "insurance_model")
         stage = os.getenv("MODEL_STAGE", "Production")
 

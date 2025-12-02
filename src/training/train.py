@@ -10,6 +10,8 @@ import pandas as pd
 import mlflow
 import mlflow.sklearn
 import logging
+import subprocess
+import json
 from dotenv import load_dotenv
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import (
@@ -108,7 +110,15 @@ def train_model(**context):
 
         # Set up MLflow tracking
         mlflow_tracking_uri = os.getenv("MLFLOW_TRACKING_URI")
+        mlflow_username = os.getenv("MLFLOW_USERNAME")
+        mlflow_password = os.getenv("MLFLOW_PASSWORD")
+
         if mlflow_tracking_uri:
+            # Set credentials for Dagshub authentication
+            if mlflow_username and mlflow_password:
+                os.environ["MLFLOW_TRACKING_USERNAME"] = mlflow_username
+                os.environ["MLFLOW_TRACKING_PASSWORD"] = mlflow_password
+
             mlflow.set_tracking_uri(mlflow_tracking_uri)
             logger.info(f"MLflow tracking URI: {mlflow_tracking_uri}")
         else:
@@ -117,11 +127,34 @@ def train_model(**context):
             mlflow.set_tracking_uri(f"file://{mlruns_path}")
             logger.warning("MLFLOW_TRACKING_URI not set, using local storage")
 
-        # Set experiment
+        # Set experiment (create if doesn't exist)
         experiment_name = os.getenv(
             "MLFLOW_EXPERIMENT_NAME", "Insurance Model Training"
         )
-        mlflow.set_experiment(experiment_name)
+        try:
+            # Try to get existing experiment
+            experiment = mlflow.get_experiment_by_name(experiment_name)
+            if experiment is None:
+                # Create new experiment
+                experiment_id = mlflow.create_experiment(experiment_name)
+                logger.info(
+                    f"Created new experiment: {experiment_name} (ID: {experiment_id})"
+                )
+            else:
+                logger.info(
+                    f"Using existing experiment: {experiment_name} (ID: {experiment.experiment_id})"
+                )
+            mlflow.set_experiment(experiment_name)
+        except Exception as e:
+            # If get_experiment_by_name fails, try set_experiment (creates if needed)
+            logger.warning(
+                f"Could not get experiment by name: {str(e)}, trying to create..."
+            )
+            try:
+                mlflow.set_experiment(experiment_name)
+            except Exception as e2:
+                logger.error(f"Failed to set experiment: {str(e2)}")
+                raise
 
         # Load processed data
         processed_data_path = "data/processed/latest.csv"
@@ -164,6 +197,49 @@ def train_model(**context):
             )
             mlflow.set_tag("data_source", "processed/latest.csv")
 
+            # Step II-3: DVC+MLflow Lineage - Track dataset version
+            try:
+                # Get git commit hash
+                git_commit = (
+                    subprocess.check_output(
+                        ["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL
+                    )
+                    .decode()
+                    .strip()
+                )
+                mlflow.set_tag("git_commit", git_commit)
+                logger.info(f"Logged git commit: {git_commit[:8]}")
+
+                # Get DVC directory hash (entire data directory is tracked)
+                dvc_file_path = "data.dvc"
+                if os.path.exists(dvc_file_path):
+                    with open(dvc_file_path, "r") as f:
+                        dvc_data = yaml.safe_load(f)
+                        if "outs" in dvc_data and len(dvc_data["outs"]) > 0:
+                            # Get the hash for the entire data directory
+                            dvc_hash = dvc_data["outs"][0].get("md5", "unknown")
+                            dvc_size = dvc_data["outs"][0].get("size", 0)
+                            dvc_nfiles = dvc_data["outs"][0].get("nfiles", 0)
+
+                            mlflow.set_tag("dvc_data_hash", dvc_hash)
+                            mlflow.set_tag("dvc_data_path", "data/")
+                            mlflow.set_tag("dvc_data_size", str(dvc_size))
+                            mlflow.set_tag("dvc_data_nfiles", str(dvc_nfiles))
+                            mlflow.log_param(
+                                "dvc_data_hash", dvc_hash
+                            )  # Also as param for searchability
+
+                            logger.info(
+                                f"Logged DVC data directory hash: {dvc_hash[:8]}... "
+                                f"({dvc_nfiles} files, {dvc_size/1024/1024:.2f} MB)"
+                            )
+                else:
+                    logger.warning(
+                        "data.dvc file not found - data directory not versioned with DVC"
+                    )
+            except Exception as e:
+                logger.warning(f"Could not get DVC/Git lineage info: {str(e)}")
+
             # Train model
             logger.info(f"Training {trainer.model_name}...")
             trainer.train_model(X_train, y_train)
@@ -202,41 +278,75 @@ def train_model(**context):
             class_report = classification_report(y_test, y_pred, output_dict=True)
             mlflow.log_dict(class_report, "classification_report.json")
 
-            # Log model
+            # Log model (workaround for Dagshub - use artifact logging)
             input_example = X_train.head(1)
-            mlflow.sklearn.log_model(
-                trainer.pipeline,
-                "model",
-                input_example=input_example,
-                registered_model_name="insurance_model",
-            )
+            try:
+                # Try standard log_model first
+                mlflow.sklearn.log_model(
+                    trainer.pipeline,
+                    "model",
+                    input_example=input_example,
+                )
+            except Exception as e:
+                # Dagshub doesn't support logged_model endpoint, use artifact logging instead
+                logger.warning(
+                    f"Standard model logging failed (Dagshub limitation): {str(e)}"
+                )
+                logger.info("Using artifact-based model logging instead...")
+                import tempfile
+                import shutil
+
+                # Save model to temp directory and log as artifact
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    model_path = os.path.join(tmpdir, "model")
+                    mlflow.sklearn.save_model(
+                        trainer.pipeline, model_path, input_example=input_example
+                    )
+                    mlflow.log_artifacts(model_path, "model")
+                logger.info("Model logged as artifact successfully")
 
             # Save model locally as well
             trainer.save_model()
             logger.info(f"Model saved to {trainer.model_path}")
 
-            # Register model
+            # Step II-4: Model Registration (MLflow Model Registry)
             model_uri = f"runs:/{run.info.run_id}/model"
             model_name = "insurance_model"
 
             try:
+                # Register model in MLflow Model Registry
+                logger.info(f"Registering model: {model_name} from {model_uri}")
                 model_version = mlflow.register_model(model_uri, model_name)
                 logger.info(
                     f"✅ Model registered: {model_name} v{model_version.version}"
                 )
 
-                # Transition to Staging
+                # Transition to Staging stage
                 client = mlflow.tracking.MlflowClient()
                 client.transition_model_version_stage(
                     name=model_name, version=model_version.version, stage="Staging"
                 )
                 logger.info(
-                    f"Model {model_name} v{model_version.version} transitioned to Staging"
+                    f"✅ Model {model_name} v{model_version.version} transitioned to Staging"
                 )
+
+                # Log model registry info as tags
+                mlflow.set_tag("model_registered", "true")
+                mlflow.set_tag("model_version", str(model_version.version))
+                mlflow.set_tag("model_stage", "Staging")
+
             except Exception as e:
+                # Dagshub may not support model registry - log warning but continue
                 logger.warning(
-                    f"Model registration failed (may already exist): {str(e)}"
+                    f"Model registration failed (Dagshub limitation): {str(e)}"
                 )
+                logger.info(
+                    f"Model artifact logged at: {model_uri}. View in Dagshub MLflow UI."
+                )
+                mlflow.set_tag("model_registered", "false")
+                mlflow.set_tag(
+                    "registration_error", str(e)[:100]
+                )  # Truncate long errors
 
             logger.info(f"✅ Training completed. Run ID: {run.info.run_id}")
             logger.info(f"Model URI: {model_uri}")
