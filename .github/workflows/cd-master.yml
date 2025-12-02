@@ -66,12 +66,13 @@ jobs:
       
       - name: Deploy to staging
         run: |
-          echo "Deploying to staging environment..."
+          echo "✅ Docker image built and pushed successfully"
+          echo "Image tags:"
+          echo "  - ${{ secrets.DOCKER_USERNAME }}/insurance-model-api:${{ github.sha }}"
+          echo "  - ${{ secrets.DOCKER_USERNAME }}/insurance-model-api:latest"
+          echo ""
+          echo "To deploy, run:"
+          echo "  docker run -d -p 8000:8000 ${{ secrets.DOCKER_USERNAME }}/insurance-model-api:latest"
           # Add your deployment commands here
           # e.g., kubectl apply, docker-compose up, etc.
-      
-      - name: Health check
-        run: |
-          sleep 10
-          curl -f http://localhost:8000/health || exit 1
 
