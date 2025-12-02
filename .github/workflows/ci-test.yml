@@ -15,6 +15,16 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
+          cache: 'pip'
+      
+      - name: Cache pip dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ github.ref }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-${{ github.ref }}-
+            ${{ runner.os }}-pip-
       
       - name: Install dependencies
         run: |
@@ -24,8 +34,37 @@ jobs:
       - name: Set up DVC
         uses: iterative/setup-dvc@v1
       
+      - name: Configure DVC remote (MinIO)
+        if: secrets.S3_ENDPOINT_URL != ''
+        run: |
+          dvc remote add myremote s3://mlops/dvc || true
+          dvc remote modify myremote endpointurl ${{ secrets.S3_ENDPOINT_URL }}
+          dvc remote modify myremote access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
+          dvc remote modify myremote secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          dvc remote default myremote
+        continue-on-error: true
+      
+      - name: Set up CML
+        uses: iterative/setup-cml@v2
+        with:
+          vega: false
+      
       - name: Pull data from DVC
-        run: dvc pull
+        if: secrets.S3_ENDPOINT_URL != ''
+        continue-on-error: true
+        run: |
+          dvc pull || echo "⚠️ DVC pull failed - will generate data if needed"
+      
+      - name: Generate data if missing
+        continue-on-error: true
+        run: |
+          if [ ! -f "data/processed/latest.csv" ]; then
+            echo "📊 Data not found, generating synthetic data..."
+            python src/data/ingestion.py
+            python src/data/transformation.py
+          else
+            echo "✅ Data file exists, skipping generation"
+          fi
       
       - name: Train model
         run: |
@@ -35,18 +74,12 @@ jobs:
           MLFLOW_USERNAME: ${{ secrets.MLFLOW_USERNAME }}
           MLFLOW_PASSWORD: ${{ secrets.MLFLOW_PASSWORD }}
       
-      - name: Compare models with CML
-        uses: iterative/cml@v0
-        with:
-          run: |
-            python scripts/compare_models.py
+      - name: Compare models and post CML report
         env:
           REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
-      
-      - name: Post CML report
-        uses: iterative/cml@v0
-        with:
-          type: markdown
-          path: cml_report.md
-          title: Model Performance Comparison
+          MLFLOW_USERNAME: ${{ secrets.MLFLOW_USERNAME }}
+          MLFLOW_PASSWORD: ${{ secrets.MLFLOW_PASSWORD }}
+        run: |
+          python scripts/compare_models.py
+          cml comment create --publish cml_report.md
