@@ -24,6 +24,11 @@ jobs:
       - name: Set up DVC
         uses: iterative/setup-dvc@v1
       
+      - name: Set up CML
+        uses: iterative/setup-cml@v2
+        with:
+          vega: false
+      
       - name: Pull data from DVC
         run: dvc pull
       
@@ -35,18 +40,12 @@ jobs:
           MLFLOW_USERNAME: ${{ secrets.MLFLOW_USERNAME }}
           MLFLOW_PASSWORD: ${{ secrets.MLFLOW_PASSWORD }}
       
-      - name: Compare models with CML
-        uses: iterative/cml@v0
-        with:
-          run: |
-            python scripts/compare_models.py
+      - name: Compare models and post CML report
         env:
           REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
-      
-      - name: Post CML report
-        uses: iterative/cml@v0
-        with:
-          type: markdown
-          path: cml_report.md
-          title: Model Performance Comparison
+          MLFLOW_USERNAME: ${{ secrets.MLFLOW_USERNAME }}
+          MLFLOW_PASSWORD: ${{ secrets.MLFLOW_PASSWORD }}
+        run: |
+          python scripts/compare_models.py
+          cml comment create --publish cml_report.md
