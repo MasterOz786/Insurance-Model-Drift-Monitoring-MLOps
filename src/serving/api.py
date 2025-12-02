@@ -16,7 +16,7 @@ from .prometheus import (
     get_metrics,
     track_prediction,
     track_data_drift,
-    PrometheusMiddleware
+    PrometheusMiddleware,
 )
 from .model_loader import load_model_from_mlflow
 from ..monitoring.drift_detection import check_feature_drift
@@ -42,18 +42,21 @@ app.add_middleware(PrometheusMiddleware)
 model = None
 model_version = None
 
+
 @app.on_event("startup")
 async def startup_event():
     """Load model from MLflow on startup"""
     global model, model_version
     try:
-        mlflow_tracking_uri = os.getenv('MLFLOW_TRACKING_URI', 'http://localhost:5000')
-        model_name = os.getenv('MODEL_NAME', 'insurance_model')
-        stage = os.getenv('MODEL_STAGE', 'Production')
-        
+        mlflow_tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
+        model_name = os.getenv("MODEL_NAME", "insurance_model")
+        stage = os.getenv("MODEL_STAGE", "Production")
+
         mlflow.set_tracking_uri(mlflow_tracking_uri)
         model, model_version = load_model_from_mlflow(model_name, stage)
-        logger.info(f"Model loaded successfully: {model_name} (version: {model_version})")
+        logger.info(
+            f"Model loaded successfully: {model_name} (version: {model_version})"
+        )
     except Exception as e:
         logger.error(f"Failed to load model: {str(e)}")
         raise
@@ -75,7 +78,7 @@ async def read_root():
     return {
         "service": "Insurance Model API",
         "status": "running",
-        "model_version": model_version
+        "model_version": model_version,
     }
 
 
@@ -87,7 +90,7 @@ async def health_check():
     return {
         "status": "healthy",
         "model_loaded": model is not None,
-        "model_version": model_version
+        "model_version": model_version,
     }
 
 
@@ -103,47 +106,50 @@ async def predict(input_data: InputData):
     Prediction endpoint with drift detection and metrics tracking
     """
     start_time = time.time()
-    
+
     try:
         # Convert input to DataFrame
         input_dict = input_data.model_dump()
         df = pd.DataFrame([input_dict.values()], columns=input_dict.keys())
-        
+
         # Check for data drift
         drift_results = {}
-        for feature in ['AnnualPremium', 'Age', 'RegionID']:
+        for feature in ["AnnualPremium", "Age", "RegionID"]:
             if feature in df.columns:
                 is_drift = check_feature_drift(feature, df[feature].iloc[0])
                 drift_results[feature] = is_drift
                 track_data_drift(feature, is_drift)
-        
+
         # Make prediction
         prediction = model.predict(df)
-        prediction_proba = model.predict_proba(df) if hasattr(model, 'predict_proba') else None
-        
+        prediction_proba = (
+            model.predict_proba(df) if hasattr(model, "predict_proba") else None
+        )
+
         # Track prediction metrics
         duration = time.time() - start_time
-        track_prediction(str(model_version), duration, 'success')
-        
+        track_prediction(str(model_version), duration, "success")
+
         result = {
             "predicted_class": int(prediction[0]),
             "model_version": model_version,
             "drift_detected": any(drift_results.values()),
-            "drift_details": drift_results
+            "drift_details": drift_results,
         }
-        
+
         if prediction_proba is not None:
             result["prediction_probability"] = float(prediction_proba[0][prediction[0]])
-        
+
         return result
-        
+
     except Exception as e:
         logger.error(f"Prediction error: {str(e)}")
         duration = time.time() - start_time
-        track_prediction(str(model_version), duration, 'error')
+        track_prediction(str(model_version), duration, "error")
         raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)
