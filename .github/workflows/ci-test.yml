@@ -16,15 +16,7 @@ jobs:
         with:
           python-version: '3.10'
           cache: 'pip'
-      
-      - name: Cache pip dependencies
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ github.ref }}-${{ hashFiles('requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-${{ github.ref }}-
-            ${{ runner.os }}-pip-
+          cache-dependency-path: requirements.txt
       
       - name: Install dependencies
         run: |
@@ -34,23 +26,12 @@ jobs:
       - name: Set up DVC
         uses: iterative/setup-dvc@v1
       
-      - name: Configure DVC remote (MinIO)
-        if: ${{ secrets.S3_ENDPOINT_URL }}
-        run: |
-          dvc remote add myremote s3://mlops/dvc || true
-          dvc remote modify myremote endpointurl ${{ secrets.S3_ENDPOINT_URL }}
-          dvc remote modify myremote access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
-          dvc remote modify myremote secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          dvc remote default myremote
-        continue-on-error: true
-      
       - name: Set up CML
         uses: iterative/setup-cml@v2
         with:
           vega: false
       
       - name: Pull data from DVC
-        if: ${{ secrets.S3_ENDPOINT_URL }}
         continue-on-error: true
         run: |
           dvc pull || echo "⚠️ DVC pull failed - will generate data if needed"
