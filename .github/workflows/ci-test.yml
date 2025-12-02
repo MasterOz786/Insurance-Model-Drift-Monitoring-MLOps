@@ -40,9 +40,9 @@ jobs:
         with:
           run: |
             python scripts/compare_models.py
-          env:
-            REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-            MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+        env:
+          REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
       
       - name: Post CML report
         uses: iterative/cml@v0
@@ -50,4 +50,3 @@ jobs:
           type: markdown
           path: cml_report.md
           title: Model Performance Comparison
-
