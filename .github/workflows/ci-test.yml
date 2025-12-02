@@ -1,0 +1,76 @@
+name: CI - Dev to Test (Model Retraining + CML)
+
+on:
+  pull_request:
+    branches:
+      - test
+
+jobs:
+  model-retraining:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Set up DVC
+        uses: iterative/setup-dvc@v1
+      
+      - name: Set up CML
+        uses: iterative/setup-cml@v2
+        with:
+          vega: false
+      
+      - name: Pull data from DVC
+        continue-on-error: true
+        run: |
+          dvc pull || echo "⚠️ DVC pull failed - will generate data if needed"
+      
+      - name: Generate data if missing
+        continue-on-error: true
+        run: |
+          if [ ! -f "data/processed/latest.csv" ]; then
+            echo "📊 Data not found, generating synthetic data..."
+            python src/data/ingestion.py
+            python src/data/transformation.py
+          else
+            echo "✅ Data file exists, skipping generation"
+          fi
+      
+      - name: Train model
+        run: |
+          python src/training/train.py
+        env:
+          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+          MLFLOW_USERNAME: ${{ secrets.MLFLOW_USERNAME }}
+          MLFLOW_PASSWORD: ${{ secrets.MLFLOW_PASSWORD }}
+      
+      - name: Compare models and post CML report
+        env:
+          REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+          MLFLOW_USERNAME: ${{ secrets.MLFLOW_USERNAME }}
+          MLFLOW_PASSWORD: ${{ secrets.MLFLOW_PASSWORD }}
+        run: |
+          python scripts/compare_models.py
+          cml comment create --publish cml_report.md
